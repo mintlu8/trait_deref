@@ -1,0 +1,24 @@
+[package]
+name = "trait_deref"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Mincong Lu <mintlux667@gmail.com>"]
+license = "MIT OR Apache-2.0"
+
+readme = "README.md"
+repository = "https://github.com/mintlu8/trait_deref"
+description = """
+Macro that simulates inheritance in a trait.
+"""
+keywords = ["trait", "inheritance"]
+
+[lib]
+proc-macro = true
+doctest = false
+
+[dependencies]
+convert_case = "0.7.1"
+proc-macro2 = "1.0.93"
+quote = "1.0.38"
+syn = { version = "2.0.96", features = ["full"] }
