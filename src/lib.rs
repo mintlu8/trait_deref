@@ -1,12 +1,38 @@
 #![doc = include_str!("../README.md")]
+use std::mem;
+
 use convert_case::{Case, Casing};
 use proc_macro::TokenStream as TokenStream1;
-use proc_macro2::TokenStream;
+use proc_macro2::{Group, Punct, Spacing, TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use syn::{
     braced, bracketed, parse::Parse, parse_macro_input, parse_quote, token::Bracket, FnArg, Ident,
     ImplItem, ItemImpl, ItemTrait, Token, TraitItem, Type, Visibility,
 };
+
+/// Replace all mentions of `crate` with `$crate`.
+fn decratify(tokens: &mut TokenStream) {
+    let mut result = Vec::new();
+    for mut tt in mem::take(tokens).into_iter() {
+        match &mut tt {
+            TokenTree::Group(group) => {
+                let span = group.span();
+                let mut stream = group.stream();
+                decratify(&mut stream);
+                *group = Group::new(group.delimiter(), stream);
+                group.set_span(span);
+            }
+            TokenTree::Ident(ident) if ident == "crate" => {
+                let mut p = Punct::new('$', Spacing::Alone);
+                p.set_span(ident.span());
+                result.push(TokenTree::Punct(p));
+            }
+            _ => (),
+        }
+        result.push(tt);
+    }
+    *tokens = result.into_iter().collect()
+}
 
 /// Generates a macro that fills missing trait items in an `impl` block by inheriting from one of its fields.
 ///
@@ -102,6 +128,10 @@ pub fn trait_deref(args: TokenStream1, trait_block: TokenStream1) -> TokenStream
     let doc = format!(
         "Implement trait [`{ident}`]. Methods not specified will be forwarded to a field's implementation.\n# Syntax\n```\n# /*\n{name}!{{\n    @[field: T]\n    impl<T: {ident}> {ident} for MyType<T> {{\n        ..\n    }}\n}}\n# */\n```"
     );
+
+    let mut trait_in = quote! {#item_trait};
+    decratify(&mut trait_in);
+
     quote! {
         #trait_block2
 
@@ -111,7 +141,7 @@ pub fn trait_deref(args: TokenStream1, trait_block: TokenStream1) -> TokenStream
         macro_rules! #name {
             ($($tt: tt)*) => {
                 ::trait_deref::impl_trait! {
-                    {#item_trait} {$($tt)*}
+                    {#trait_in} {$($tt)*}
                 }
             }
 
