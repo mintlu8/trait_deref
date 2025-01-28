@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use trait_deref::trait_deref;
 
 #[trait_deref(inherit_my_trait)]
@@ -10,6 +12,13 @@ trait MyTrait {
     fn get_item(&self) -> Self::Item;
 
     fn get_name(&self) -> &str;
+
+    #[rc]
+    fn get_by_rc<RC>(this: RC, get: impl Fn(&RC) -> &Self) -> Self::Item;
+
+    fn get_arc(self: Arc<Self>) -> Self::Item {
+        Self::get_by_rc(self, Arc::as_ref)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -26,6 +35,10 @@ impl<T: Copy> MyTrait for Base<T> {
 
     fn get_name(&self) -> &str {
         "Base"
+    }
+
+    fn get_by_rc<RC>(this: RC, get: impl Fn(&RC) -> &Self) -> Self::Item {
+        get(&this).0
     }
 }
 
@@ -58,6 +71,10 @@ inherit_my_trait! {
 
         fn get_item(&self) -> Self::Item {
             self.int
+        }
+
+        fn get_by_rc<RC>(this:RC, get:impl Fn(&RC) ->  &Self) -> Self::Item{
+            get(&this).int
         }
     }
 }

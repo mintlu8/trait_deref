@@ -7,7 +7,7 @@ use proc_macro2::{Group, Punct, Spacing, TokenStream, TokenTree};
 use quote::{format_ident, quote};
 use syn::{
     braced, bracketed, parse::Parse, parse_macro_input, parse_quote, token::Bracket, FnArg, Ident,
-    ImplItem, ItemImpl, ItemTrait, Token, TraitItem, Type, Visibility,
+    ImplItem, ItemImpl, ItemTrait, Meta, Token, TraitItem, Type, Visibility,
 };
 
 /// Replace all mentions of `crate` with `$crate`.
@@ -86,15 +86,72 @@ fn decratify(tokens: &mut TokenStream) {
 /// # */
 /// ```
 ///
+/// # Rc
+///
+/// To both erase and compose something like `Rc<dyn MyTrait>`, a special syntax is needed
+/// since the type system cannot be infinitely recursive.
+///
+/// ```
+/// # use trait_deref::trait_deref;
+/// #[trait_deref]
+/// pub trait MyTrait {
+///     #[rc]
+///     fn get<RC: Clone>(this: RC, get: impl Fn(&RC) -> &Self, ..) -> i32;
+///
+///     // Since this trait cannot be dyn compatible, you might want to put this in a separate trait.
+///     fn get_arc(self: Arc<Self>, ..) -> i32{
+///         self.get(self, Arc::as_ref, ..)
+///     }
+///     
+/// }
+/// ```
+/// 
+/// The trait bound on `RC` can be tailored to your specific needs, for instance `Into<Arc<dyn ErasedMyTrait>>`.
+///
+/// # import
+///
+/// The macro cannot find the path of items automatically, so add them manually with `#[import]`:
+///
+/// ```
+/// # use trait_deref::trait_deref;
+/// #[trait_deref]
+/// #[import(::std::sync::Arc)]
+/// #[import(crate::Card)]
+/// pub trait Deck {
+///     fn get(self, name: Arc<str>) -> Card;
+/// }
+/// ```
+///
 /// # Rules
 ///
-/// * The macro does not rewrite the trait.
+/// * The macro does not rewrite the trait, except removing attributes specific to this macro.
 /// * Default function or const implementations will not be used.
 /// * Receivers like `self: Box<Self>` is not supported and such items will be ignored.
 #[proc_macro_attribute]
 pub fn trait_deref(args: TokenStream1, trait_block: TokenStream1) -> TokenStream1 {
-    let trait_block2 = TokenStream::from(trait_block.clone());
     let mut item_trait = parse_macro_input!(trait_block as ItemTrait);
+
+    let mut trait_out = item_trait.clone();
+    let mut imports = Vec::new();
+    trait_out.attrs.retain(|x| {
+        if x.path().is_ident("import") {
+            match &x.meta {
+                Meta::List(list) => {
+                    imports.push(list.tokens.clone());
+                    false
+                }
+                _ => true,
+            }
+        } else {
+            true
+        }
+    });
+    for item in &mut trait_out.items {
+        if let TraitItem::Fn(f) = item {
+            f.attrs.retain_mut(|x| !x.path().is_ident("rc"));
+        }
+    }
+
     let ident = item_trait.ident.clone();
 
     let name = if let Ok(name) = syn::parse::<Ident>(args) {
@@ -133,18 +190,20 @@ pub fn trait_deref(args: TokenStream1, trait_block: TokenStream1) -> TokenStream
     decratify(&mut trait_in);
 
     quote! {
-        #trait_block2
+        #trait_out
 
         #[allow(unused_macros)]
         #[doc = #doc]
         #macro_export
         macro_rules! #name {
             ($($tt: tt)*) => {
-                ::trait_deref::impl_trait! {
-                    {#trait_in} {$($tt)*}
-                }
+                const _: () = {
+                    #(use #imports;)*
+                    ::trait_deref::impl_trait! {
+                        {#trait_in} {$($tt)*}
+                    }
+                };
             }
-
         }
     }
     .into()
@@ -218,6 +277,33 @@ pub fn impl_trait(tokens: TokenStream1) -> TokenStream1 {
                     let ty = item.ty;
                     extended.push(parse_quote!(
                         const #ident: #ty = #inner_ty::#ident;
+                    ));
+                }
+            }
+            // rc mode
+            TraitItem::Fn(item) if item.attrs.iter().any(|x| x.path().is_ident("rc")) => {
+                if !impl_block.items.iter().any(|x| match x {
+                    ImplItem::Fn(v) => v.sig.ident == item.sig.ident,
+                    _ => false,
+                }) {
+                    let sig = &item.sig;
+                    let ident = &sig.ident;
+                    let this = match item.sig.inputs.get(0) {
+                        Some(FnArg::Typed(arg)) => &arg.pat,
+                        _ => panic!("Expected at least 2 items and no receiver."),
+                    };
+                    let func = match item.sig.inputs.get(1) {
+                        Some(FnArg::Typed(arg)) => &arg.pat,
+                        _ => panic!("Expected at least 2 items."),
+                    };
+                    let rest = item.sig.inputs.iter().skip(2).filter_map(|x| match x {
+                        FnArg::Receiver(_) => None,
+                        FnArg::Typed(x) => Some(&x.pat),
+                    });
+                    extended.push(parse_quote!(
+                        #sig {
+                            #trait_name::#ident(#this, |__x| &#func(__x).#field, #(#rest),*)
+                        }
                     ));
                 }
             }

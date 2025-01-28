@@ -44,7 +44,7 @@ Known issues include:
 
 We cannot magically obtain import paths of types, either use fully qualified names like
 `::std::sync::Arc`, use a `crate::*` path, which will be transformed to `$crate::*`, or
-wrap the generated macro inside another macro that adds the necessary imports to your macro.
+use the `#[import(..)]` attribute.
 
 * `crate::macro!` cannot be used (lint)
 
