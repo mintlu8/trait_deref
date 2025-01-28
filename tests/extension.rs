@@ -106,4 +106,19 @@ fn main() {
 
     assert_eq!(Ext::<Base::<i32>>::A, 1);
     assert_eq!(Ext::<Base::<i32>>::B, 3);
+
+    let a = Arc::new(Base(4));
+    assert_eq!(a.get_arc(), 4);
+
+    let b = Arc::new(Ext {
+        item: Base(4),
+        int: 1,
+    });
+    assert_eq!(b.get_arc(), 4);
+
+    let c = Arc::new(Ext2 {
+        item: Base(4),
+        int: 1,
+    });
+    assert_eq!(c.get_arc(), 1);
 }

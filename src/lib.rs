@@ -105,7 +105,7 @@ fn decratify(tokens: &mut TokenStream) {
 ///     
 /// }
 /// ```
-/// 
+///
 /// The trait bound on `RC` can be tailored to your specific needs, for instance `Into<Arc<dyn ErasedMyTrait>>`.
 ///
 /// # import
