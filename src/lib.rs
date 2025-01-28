@@ -116,6 +116,7 @@ fn decratify(tokens: &mut TokenStream) {
 /// # use trait_deref::trait_deref;
 /// #[trait_deref]
 /// #[import(::std::sync::Arc)]
+/// // `crate` means `$crate` here since `$crate` is an unstable feature and not allowed.
 /// #[import(crate::Card)]
 /// pub trait Deck {
 ///     fn get(self, name: Arc<str>) -> Card;
@@ -137,7 +138,9 @@ pub fn trait_deref(args: TokenStream1, trait_block: TokenStream1) -> TokenStream
         if x.path().is_ident("import") {
             match &x.meta {
                 Meta::List(list) => {
-                    imports.push(list.tokens.clone());
+                    let mut tokens = list.tokens.clone();
+                    decratify(&mut tokens);
+                    imports.push(tokens);
                     false
                 }
                 _ => true,
@@ -198,7 +201,7 @@ pub fn trait_deref(args: TokenStream1, trait_block: TokenStream1) -> TokenStream
         macro_rules! #name {
             ($($tt: tt)*) => {
                 const _: () = {
-                    #(use #imports;)*
+                    #(#[allow(unused_imports)] use #imports;)*
                     ::trait_deref::impl_trait! {
                         {#trait_in} {$($tt)*}
                     }
