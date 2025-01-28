@@ -305,7 +305,7 @@ pub fn impl_trait(tokens: TokenStream1) -> TokenStream1 {
                     });
                     extended.push(parse_quote!(
                         #sig {
-                            #trait_name::#ident(#this, |__x| &#func(__x).#field, #(#rest),*)
+                            #trait_name::#ident(#this, move |__x| &#func(__x).#field, #(#rest),*)
                         }
                     ));
                 }
